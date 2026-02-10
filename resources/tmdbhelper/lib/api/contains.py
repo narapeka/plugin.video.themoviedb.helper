@@ -51,6 +51,11 @@ class CommonContainerAPIs():
         return OMDb()
 
     @cached_property
+    def douban_api(self):
+        from tmdbhelper.lib.api.douban.api import DoubanAPI
+        return DoubanAPI()
+
+    @cached_property
     def query_database(self):
         from tmdbhelper.lib.query.database.database import FindQueriesDatabase
         return FindQueriesDatabase()

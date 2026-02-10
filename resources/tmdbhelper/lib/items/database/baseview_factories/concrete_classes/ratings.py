@@ -100,6 +100,15 @@ class RatingsDict(BaseList):
             return {}
 
     @cached_property
+    def douban_ratings(self):
+        if not self.common_apis.douban_api or not self.imdb_id:
+            return {}
+        try:
+            return self.common_apis.douban_api.get_ratings(imdb_id=self.imdb_id) or {}
+        except (KeyError, TypeError, IndexError, ValueError):
+            return {}
+
+    @cached_property
     def online_data_mapped(self):
         """ function called when local cache does not have any data """
         data = {}
@@ -120,7 +129,10 @@ class RatingsDict(BaseList):
         self.imdb_id = self.get_imdb_id()
 
         with ParallelThread(attribs, get_data_attr):
-            pass
+            douban = self.douban_ratings  # main thread: runs while others are in threads
+
+        if douban:
+            data.update(douban)  # deterministic override after all threads complete
 
         return data
 
@@ -145,7 +157,7 @@ class RatingsDict(BaseList):
             'tmdb_rating': lambda v: f'{(v / 10):.1f}',
             'trakt_rating': lambda v: f'{(v / 10):.1f}',
             'imdb_rating': lambda v: f'{(v / 10):.1f}',
-            'letterboxd_rating': lambda v: f'{(v / 20):.1f}',  # 5 Star rating
+            'letterboxd_rating': lambda v: f'{(v / 10):.1f}',  # /10 scale (Douban or letterboxd fallback)
             'rogerebert_rating': lambda v: f'{(v / 25):.1f}',  # 4 Star rating
         }
 

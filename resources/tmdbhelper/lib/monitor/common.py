@@ -133,6 +133,7 @@ class CommonMonitorDetails(CommonContainerAPIs):
         sync.common_apis.trakt_api = self.trakt_api
         sync.common_apis.tmdb_api = self.tmdb_api
         sync.common_apis.omdb_api = self.omdb_api
+        sync.common_apis.douban_api = self.douban_api
         sync.imdb_top250_list = self.return_imdb_top250_list(tmdb_type)
         sync.tmdb_type = tmdb_type
         sync.tmdb_id = tmdb_id
