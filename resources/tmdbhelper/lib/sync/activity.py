@@ -1,18 +1,21 @@
-from tmdbhelper.lib.api.trakt.sync.property_mixins import SyncDataParentProperties
 from jurialmunkey.ftools import cached_property
+from tmdbhelper.lib.addon.logger import kodi_log
+from tmdbhelper.lib.addon.plugin import get_setting
 from tmdbhelper.lib.files.futils import json_loads as data_loads
 from tmdbhelper.lib.files.futils import json_dumps as data_dumps
 from tmdbhelper.lib.addon.tmdate import set_timestamp, get_timestamp
 from tmdbhelper.lib.addon.consts import LASTACTIVITIES_DATA, LASTACTIVITIES_EXPIRY
 from tmdbhelper.lib.files.locker import mutexlock
+from tmdbhelper.lib.sync.mixins import SyncDataParentProperties
 
 
-class SyncLastActivitiesSyndDataProperties(SyncDataParentProperties):
-    def __init__(self, instance_syncdata):
-        self.instance_syncdata = instance_syncdata
+MDBLIST_SETTINGS = (
+    ('sync_source_watchlist', 'watchlisted_at'),
+    ('sync_source_collection', 'collected_at'),
+)
 
 
-class SyncLastActivities(SyncLastActivitiesSyndDataProperties):
+class SyncLastActivities(SyncDataParentProperties):
     @property
     def mutex_lockname(self):
         return f'{self.cache._db_file}.sync_last_activities.lockfile'
@@ -47,28 +50,56 @@ class SyncLastActivities(SyncLastActivitiesSyndDataProperties):
         return data
 
     def get_json_sync(self):
-        from tmdbhelper.lib.addon.logger import kodi_log
         kodi_log('Sync: last_activities', 2)
-        data = self.get_response_json('sync/last_activities')
-        if not data:
+
+        try:
+            data = self.trakt_api.get_response_json('sync/last_activities') or {}
+        except AttributeError:
+            data = {}
+
+        try:
+            mdblist_data = self.mdblist_api.get_response_json('sync/last_activities') or {}
+        except AttributeError:
+            mdblist_data = {}
+
+        if not data and not mdblist_data:
             return
+
+        data = self.update_data_with_mdblist_activities(data, mdblist_data)
+
         data['expiry'] = set_timestamp(LASTACTIVITIES_EXPIRY)
         self.window.get_property(LASTACTIVITIES_DATA, set_property=data_dumps(data))
+
+        return data
+
+    @staticmethod
+    def update_data_with_mdblist_activities(data, mdblist_data):
+        for setting, activity_key in MDBLIST_SETTINGS:
+            if get_setting(setting, 'str') != 'MDbList':
+                continue
+            activity_mdblist = mdblist_data.get(activity_key)
+            for item_type in ('movies', 'shows', 'seasons', 'episodes'):
+                data.setdefault(item_type, {})[activity_key] = activity_mdblist
         return data
 
     def is_expired(self, timestamp, keys=None):
         if not timestamp:
             return True
 
-        last_activity = self.json
-
-        if not last_activity:
-            return True
-
-        for k in (keys or ('all', )):
-            last_activity = last_activity.get(k) or {}
+        last_activity = self.get_last_activity(keys)
 
         if not last_activity or last_activity > timestamp:
             return True
 
         return False
+
+    def get_last_activity(self, keys=None):
+        last_activity = self.json
+
+        if not last_activity:
+            return
+
+        for k in (keys or ('all', )):
+            last_activity = last_activity.get(k) or {}
+
+        return last_activity
